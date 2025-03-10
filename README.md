@@ -1,6 +1,8 @@
 Tools for converting rkengine .rk (model) and .anim (animation) files.
 Also includes a tool for extracting .ark files.
 
+This fork tries to load all the images from the game as png files instead of pvr files. I made this change due to how the game as recently been including textures in a format that this program doesn't support.
+
 # Building
 
 Requires [Rust](https://rustup.rs/) and a C++ compiler (for use with
@@ -20,18 +22,30 @@ cargo build --release
 
 # Usage
 
+## .ark files
+This program does include a tool to extract ark files, however I recommend using [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) as it handles the ark files much better (and allows extracting multiple .ark files into one directory at once).
+
+Here's how to use the tool in the program if you really want to use it.
+
 To extract a .ark file:
 
-```sh
+```shell
 cargo run --release --bin unark -- path/to/file.ark
 ```
 
 This will extract the contents of the .ark into the current directory.
 You should probably run this in a new, empty directory.
 
+## Converting models
+Since this fork searches to png files instead of pvr files, you have to use [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) to convert all the pvr files.
+
+```shell
+luna_kit pvr "folder/**/*.pvr" -o "{dir}/{name}.{format}" -f png -n
+```
+
 To convert a model to glTF:
 
-```sh
+```shell
 # Without animation:
 cargo run --release --bin model-to-gltf -- path/to/model.rk
 # With animation:
