@@ -4,7 +4,7 @@ use std::env;
 use std::f32::consts::PI;
 use std::ffi::OsStr;
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 use gltf_json::{
     Root, Index, Node, Mesh, Scene, Accessor, Buffer, Skin, Animation, Image, Texture, Material,
@@ -453,18 +453,34 @@ impl PrimType for u32 {
 }
 
 
-fn decompose_bone_matrix(m: Matrix4<f32>) -> (Vector3<f32>, UnitQuaternion<f32>, Vector3<f32>) {
+fn decompose_bone_matrix(m: Matrix4<f32>, debug: bool) -> (Vector3<f32>, UnitQuaternion<f32>, Vector3<f32>) {
+    if debug {
+        println!("  original: {}", m)
+    }
     let translate_vec4 = m * Vector4::new(0., 0., 0., 1.);
     let translate: Vector3<f32> = translate_vec4.remove_row(3);
 
+    if debug {
+        println!("  translate: {}", translate);
+    }
+
     let mat3: Matrix3<f32> = m.remove_row(3).remove_column(3);
+    if debug {
+        println!("  mat3: {}", mat3);
+    }
 
     let rotate = UnitQuaternion::from(Rotation::from_matrix_unchecked(mat3));
-
+    
     let rotate_inv_mat = rotate.inverse().to_rotation_matrix();
     let scale_mat = mat3 * rotate_inv_mat;
     let scale = scale_mat.diagonal();
-
+    if debug {
+        println!("  rotate: Quaternion({}, {}, {}, {})", rotate.scalar(), rotate.vector()[0], rotate.vector()[1], rotate.vector()[2]);
+        println!("  rotate_matrix: {}", rotate.to_rotation_matrix().to_homogeneous());
+        println!("  rotate_inv_mat: {}", rotate_inv_mat);
+        println!("  scale_mat: {}", scale_mat);
+        println!("  scale: {}", scale);
+    }
     (translate, rotate, scale)
 }
 
@@ -548,12 +564,38 @@ fn main() -> io::Result<()> {
         if material_images.contains_key(&m.material) {
             continue;
         }
-        let texture_path = model_path.with_file_name(format!("{}.pvr", m.material));
+        let texture_path = model_path.with_file_name(format!("{}.png", m.material));
         eprintln!("  load {} from {}", m.material, texture_path.display());
         // TODO: read {name}.rkm and extract DiffuseTexture name
-        let mut pf = PvrFile::new(File::open(texture_path)?);
-        let img = pf.read_image()?;
-        material_images.insert(m.material.clone(), img);
+// 
+//         let decoder = png::Decoder::new(File::open(texture_path).unwrap());
+//         let (info, mut reader) = decoder.read_info().unwrap();
+//         // Allocate the output buffer.
+// 
+//         let mut img = rk_convert::image::Image::new(info.width, info.height);
+//         let output_bytes = img.bytes_mut();
+//         
+//         let mut buf = vec![0; info.buffer_size()];
+//         // Read the next frame. Currently this function should only called once.
+//         // The default options
+//         reader.next_frame(&mut buf).unwrap();
+// 
+// 
+//         let mut out = Vec::new();
+//         let mut enc = png::Encoder::new(&mut out, info.width, info.height);
+//         enc.set_color(png::ColorType::RGBA);
+//         enc.set_depth(png::BitDepth::Eight);
+//         let mut writer = enc.write_header()?;
+//         writer.write_image_data(&buf)?;
+// 
+//         let mut pf = PvrFile::new(File::open(texture_path)?);
+//         let img: rk_convert::image::Image = pf.read_image()?;
+// 
+//         img.to_png_vec();
+
+        let data: Vec<u8> = fs::read(texture_path)?;
+
+        material_images.insert(m.material.clone(), data);
     }
 
 
@@ -574,22 +616,31 @@ fn main() -> io::Result<()> {
     fn flip_vector_array(arr: [f32; 3]) -> [f32; 3] {
         [-arr[0], -arr[1], -arr[2]]
     }
-    fn flip_quaternion(q: UnitQuaternion<f32>) -> UnitQuaternion<f32> {
+    fn flip_quaternion(q: UnitQuaternion<f32>, debug: bool) -> UnitQuaternion<f32> {
         // Flip Y axis
+        if debug {
+            eprintln!("  original Quaternion({}, {}, {}, {})", q.scalar(), q.vector()[0], q.vector()[1], q.vector()[2]);
+        }
         let q = UnitQuaternion::from_quaternion(Quaternion::new(
             q.scalar(),
             -q.vector()[0],
             q.vector()[1],
             -q.vector()[2],
         ));
+        if debug {
+            eprintln!("  second Quaternion({}, {}, {}, {})", q.scalar(), q.vector()[0], q.vector()[1], q.vector()[2]);
+        }
         // Rotate 180 degrees around Y axis
         let q = UnitQuaternion::from_euler_angles(0., PI, 0.) * q;
+        if debug {
+            eprintln!("  flipped Quaternion({}, {}, {}, {})", q.scalar(), q.vector()[0], q.vector()[1], q.vector()[2]);
+        }
         q
     }
     fn flip_quaternion_array(arr: [f32; 4]) -> [f32; 4] {
         let [w, i, j, k] = arr;
         let q = UnitQuaternion::from_quaternion(Quaternion::new(w, i, j, k));
-        let q = flip_quaternion(q);
+        let q = flip_quaternion(q, false);
         [
             q.scalar(),
             q.vector()[0],
@@ -605,9 +656,9 @@ fn main() -> io::Result<()> {
     }
     for b in &mut o.bones {
         let bone_mat = Matrix4::from_column_slice(&b.matrix);
-        let (t, r, s) = decompose_bone_matrix(bone_mat);
+        let (t, r, s) = decompose_bone_matrix(bone_mat, b.name == "type01_bn_chest");
         let t = flip_vector(t);
-        let r = flip_quaternion(r);
+        let r = flip_quaternion(r, b.name == "type01_bn_chest");
         b.matrix = to_column_major(compose_bone_matrix(t, r, s));
     }
     if let Some(anim) = anim.as_mut() {
@@ -730,8 +781,8 @@ fn main() -> io::Result<()> {
     let mut material_idxs = HashMap::with_capacity(material_images.len());
     for name in keys {
         let img = material_images.get(name).unwrap();
-        let png_bytes = img.to_png_vec();
-        let view_idx = gltf.push_bin_view(&png_bytes, None);
+        // let png_bytes = img.to_png_vec();
+        let view_idx = gltf.push_bin_view(&img, None);
 
         let image_idx = gltf.push_image(Image {
             buffer_view: Some(view_idx),
@@ -766,7 +817,7 @@ fn main() -> io::Result<()> {
                 extras: Default::default(),
             },
             alpha_cutoff: None,
-            alpha_mode: Checked::Valid(AlphaMode::Blend),
+            alpha_mode: Checked::Valid(AlphaMode::Opaque),
             double_sided: false,
             normal_texture: None,
             occlusion_texture: None,
@@ -791,6 +842,10 @@ fn main() -> io::Result<()> {
         let bone_mat = Matrix4::from_column_slice(&b.matrix);
         bone_mats.push(bone_mat);
         bone_mats_inv.push(bone_mat.try_inverse().unwrap());
+        if b.name == "type01_bn_chest" {
+            println!("  Matrix: {}", bone_mat);
+            println!("  Inverse: {}", bone_mat.try_inverse().unwrap());
+        }
     }
 
     let mut all_bone_nodes = Vec::with_capacity(o.bones.len());
@@ -802,9 +857,13 @@ fn main() -> io::Result<()> {
             Some(j) => bone_mats_inv[j] * bone_mats[i],
         };
 
+        if b.name == "type01_bn_chest" {
+            println!("  local_mat: {}", local_mat);
+        }
+
         inverse_bind_matrices_vec.push(bone_mats_inv[i]);
 
-        let (t, r, s) = decompose_bone_matrix(local_mat);
+        let (t, r, s) = decompose_bone_matrix(local_mat, false);
 
         let node_idx = gltf.push_node(Node {
             camera: None,
@@ -897,6 +956,7 @@ fn main() -> io::Result<()> {
         extensions: None,
         extras: Default::default(),
     });
+
     let inverse_bind_matrices_acc = gltf.push_prim_accessor(
         &inverse_bind_matrices_vec, None, false);
     let skin_idx = gltf.push_skin(Skin {
@@ -1026,7 +1086,7 @@ fn main() -> io::Result<()> {
                         },
                     };
 
-                    let (t, r, s) = decompose_bone_matrix(local_pose_mat);
+                    let (t, r, s) = decompose_bone_matrix(local_pose_mat, false);
 
                     pos_vec.push([
                         t[0],
