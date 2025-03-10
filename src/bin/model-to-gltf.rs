@@ -502,6 +502,8 @@ fn calc_pose_matrix(pose: &BonePose) -> Matrix4<f32> {
 fn main() -> io::Result<()> {
     // Load model
 
+    let debug = false;
+
     let args = env::args_os().collect::<Vec<_>>();
     assert!(
         args.len() == 2 || args.len() == 3,
@@ -656,9 +658,9 @@ fn main() -> io::Result<()> {
     }
     for b in &mut o.bones {
         let bone_mat = Matrix4::from_column_slice(&b.matrix);
-        let (t, r, s) = decompose_bone_matrix(bone_mat, b.name == "type01_bn_chest");
+        let (t, r, s) = decompose_bone_matrix(bone_mat, debug && b.name == "type01_bn_chest");
         let t = flip_vector(t);
-        let r = flip_quaternion(r, b.name == "type01_bn_chest");
+        let r = flip_quaternion(r, debug && b.name == "type01_bn_chest");
         b.matrix = to_column_major(compose_bone_matrix(t, r, s));
     }
     if let Some(anim) = anim.as_mut() {
@@ -842,7 +844,7 @@ fn main() -> io::Result<()> {
         let bone_mat = Matrix4::from_column_slice(&b.matrix);
         bone_mats.push(bone_mat);
         bone_mats_inv.push(bone_mat.try_inverse().unwrap());
-        if b.name == "type01_bn_chest" {
+        if debug && b.name == "type01_bn_chest" {
             println!("  Matrix: {}", bone_mat);
             println!("  Inverse: {}", bone_mat.try_inverse().unwrap());
         }
@@ -857,7 +859,7 @@ fn main() -> io::Result<()> {
             Some(j) => bone_mats_inv[j] * bone_mats[i],
         };
 
-        if b.name == "type01_bn_chest" {
+        if debug && b.name == "type01_bn_chest" {
             println!("  local_mat: {}", local_mat);
         }
 
