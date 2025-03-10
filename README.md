@@ -40,7 +40,7 @@ You should probably run this in a new, empty directory.
 Since this fork searches to png files instead of pvr files, you have to use [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) to convert all the pvr files.
 
 ```shell
-luna_kit pvr "folder/**/*.pvr" -o "{dir}/{name}.{format}" -f png -n
+luna-kit pvr "folder/**/*.pvr" -o "{dir}/{name}.{format}" -f png -n
 ```
 
 To convert a model to glTF:
