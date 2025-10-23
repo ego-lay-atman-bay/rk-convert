@@ -23,9 +23,9 @@ cargo build --release
 # Usage
 
 ## .ark files
-This program does include a tool to extract ark files, however I recommend using [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) as it handles the ark files much better (and allows extracting multiple .ark files into one directory at once).
+This program does include a tool to extract ark files, however it doesn't work with the newer v4 files. You can use [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) to extract the files in the latest version (v4 ark files).
 
-Here's how to use the tool in the program if you really want to use it.
+If you have v3 ark files and want to use this program, here's how to use the tool in the program (**Will not work with files from the latest version**).
 
 To extract a .ark file:
 
@@ -37,7 +37,7 @@ This will extract the contents of the .ark into the current directory.
 You should probably run this in a new, empty directory.
 
 ## Converting models
-Since this fork searches to png files instead of pvr files, you have to use [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) to convert all the pvr files.
+Since this fork searches to png files instead of pvr files, you have to use [Luna Kit](https://github.com/ego-lay-atman-bay/luna-kit/) to convert all the pvr files, though the `dump` command does this automatically.
 
 ```shell
 luna-kit pvr "folder/**/*.pvr" -o "{dir}/{name}.{format}" -f png -n
