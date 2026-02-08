@@ -12,3 +12,4 @@ pub mod model;
 pub mod modify;
 pub mod pvr;
 pub mod pvrtc;
+pub mod glb;
