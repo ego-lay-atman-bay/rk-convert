@@ -18,7 +18,7 @@ fn main() -> io::Result<()> {
     
     eprintln!("load object from {}", model_path.display());
     
-    let _ = rk_to_gltf(model_path, anim_path, &output_path);
+    rk_to_gltf(model_path, anim_path, &output_path)?;
     
     println!("Output Filename: {}", output_path.display());
 
