@@ -61,3 +61,11 @@ Otherwise, pass the `.anim` file to get all frames as a single giant animation.
 For models that aren't animated, don't pass an animation file at all.
 
 The output will be saved as `out.glb` in glTF binary format.
+
+## Bulk converting
+
+It's also possible to bulk convert all the pony models
+
+```shell
+cargo run --release --bin bulk-convert extracted/files/ output/glb/files
+```
