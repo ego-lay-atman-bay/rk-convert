@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io::{self, Read, Seek, SeekFrom, Cursor};
-use std::iter;
+use std::{iter, vec};
 use std::ops::Range;
 use std::str;
 use std::i16;
@@ -14,6 +14,7 @@ const SEC_MATERIAL: u32 = 2;
 const SEC_VERTEX: u32 = 3;
 const SEC_FACE: u32 = 4;
 const SEC_BONE: u32 = 7;
+const SEC_ATTRIB: u32 = 13;
 const SEC_SUBOBJ_NAME: u32 = 16;
 const SEC_VERTEX_WEIGHT: u32 = 17;
 
@@ -59,6 +60,17 @@ pub struct Bone {
 pub struct Object {
     pub models: Vec<Model>,
     pub bones: Vec<Bone>,
+}
+
+pub enum UVFormat {
+    Float,
+    Short,
+}
+
+pub struct Attributes {
+    pub uv_offset: u16,
+    pub uv_format: UVFormat,
+    pub uv_scale: u16,
 }
 
 
@@ -161,40 +173,119 @@ impl<T: Read + Seek> ModelFile<T> {
         }
     }
 
+    pub fn read_attrib_section(
+        &mut self,
+        headers: &[SectionHeader],
+        tag: u32,
+    ) -> io::Result<Attributes> {
+        let mut uv_offset: u8 = 0;
+        let mut uv_format: UVFormat = UVFormat::Short;
+        let mut uv_scale: u16 = 1;
+
+        if let Some(h) = headers.iter().find(|h| h.tag == tag) {
+            let _ = self.read_tagged_section_with(headers, tag, |f| {
+                let size: u16 = f.read_one()?;
+                uv_offset = f.read_one()?;
+                let _unknown: u8 = f.read_one()?;
+                match size {
+                    1030 => {
+                        uv_format = UVFormat::Short;
+                        uv_scale = 2;
+                    },
+                    1026 => {
+                        uv_format = UVFormat::Float;
+                        uv_scale = 1;
+                    },
+                    _ => {},
+                }
+                Ok(())
+            });
+        }
+
+        Ok(Attributes { uv_offset: uv_offset as u16, uv_format, uv_scale })
+    }
+
     pub fn read_vertex_section(
         &mut self,
         headers: &[SectionHeader],
         tag: u32,
     ) -> io::Result<Vec<([f32; 3], [i16; 2])>> {
+        let attributes = self.read_attrib_section(headers, SEC_ATTRIB)?;
+
         if let Some(h) = headers.iter().find(|h| h.tag == tag) {
             let item_size = h.byte_length / h.count;
-            match item_size {
-                16 => self.read_tagged_section_with(headers, tag, |f| {
-                    let pos: [f32; 3] = f.read_one()?;
-                    let uv: [i16; 2] = f.read_one()?;
-                    Ok((pos, uv))
-                }),
-                20 => self.read_tagged_section_with(headers, tag, |f| {
-                    let pos: [f32; 3] = f.read_one()?;
-                    let uv: [f32; 2] = f.read_one()?;
-                    let uv: [i16; 2] = [
-                        (uv[0] * 32767.) as i16,
-                        (uv[1] * 32767.) as i16,
-                    ];
-                    Ok((pos, uv))
-                }),
-                28 => self.read_tagged_section_with(headers, tag, |f| {
-                    let pos: [f32; 3] = f.read_one()?;
-                    let unk1: [u16; 4] = f.read_one()?;
-                    let uv: [i16; 2] = f.read_one()?;
-                    let unk2: u32 = f.read_one()?;
-                    // Debug print for inspecting the unknown field values:
-                    //println!("vertex: {:?}, {:x?}, {:?}, {:x}", pos, unk1, uv, unk2);
-                    Ok((pos, uv))
-                }),
-                _ => panic!(
-                    "bad item size {} for vertex section", item_size),
-            }
+
+            self.read_tagged_section_with(headers, tag, |f| {
+                let mut size: u16 = 12;
+                let pos: [f32; 3] = f.read_one()?;
+
+                let pad = attributes.uv_offset - size;
+                if pad > 0 {
+                    f.seek(SeekFrom::Current(pad as i64));
+                }
+                size += pad;
+
+                let uv = match attributes.uv_format {
+                    UVFormat::Float => {
+                        size += 8;
+                        let uv: [f32; 2] = f.read_one()?;
+                        let uv: [i16; 2] = [
+                            (uv[0] * 32767.) as i16,
+                            (uv[1] * 32767.) as i16,
+                        ];
+                        uv
+                    },
+                    UVFormat::Short => {
+                        size += 4;
+                        let uv: [i16; 2] = f.read_one()?;
+                        uv
+                    }
+                };
+                let pad = item_size - size as u32;
+                if pad > 0 {
+                    f.seek(SeekFrom::Current(pad as i64));
+                }
+
+                Ok((pos, uv))
+            })
+
+
+
+            // match item_size {
+            //     16 => self.read_tagged_section_with(headers, tag, |f| {
+            //         let pos: [f32; 3] = f.read_one()?;
+            //         let uv: [i16; 2] = f.read_one()?;
+            //         Ok((pos, uv))
+            //     }),
+            //     20 => self.read_tagged_section_with(headers, tag, |f| {
+            //         let pos: [f32; 3] = f.read_one()?;
+            //         let uv: [f32; 2] = f.read_one()?;
+            //         let uv: [i16; 2] = [
+            //             (uv[0] * 32767.) as i16,
+            //             (uv[1] * 32767.) as i16,
+            //         ];
+            //         Ok((pos, uv))
+            //     }),
+            //     24 => self.read_tagged_section_with(headers, tag, |f| {
+            //         let pos: [f32; 3] = f.read_one()?;
+            //         let unk1: [u16; 4] = f.read_one()?;
+            //         let uv: [i16; 2] = f.read_one()?;
+            //         // Debug print for inspecting the unknown field values:
+            //         //println!("vertex: {:?}, {:x?}, {:?}, {:x}", pos, unk1, uv, unk2);
+            //         Ok((pos, uv))
+            //     }),
+            //     28 => self.read_tagged_section_with(headers, tag, |f| {
+            //         let pos: [f32; 3] = f.read_one()?;
+            //         let unk1: [u16; 4] = f.read_one()?;
+            //         let uv: [i16; 2] = f.read_one()?;
+            //         let unk2: u32 = f.read_one()?;
+            //         // Debug print for inspecting the unknown field values:
+            //         //println!("vertex: {:?}, {:x?}, {:?}, {:x}", pos, unk1, uv, unk2);
+            //         Ok((pos, uv))
+            //     }),
+            //     _ => panic!(
+            //         "bad item size {} for vertex section", item_size),
+            // }
         } else {
             Ok(Vec::new())
         }
