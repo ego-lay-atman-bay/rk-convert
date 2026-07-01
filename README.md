@@ -64,7 +64,7 @@ The output will be saved as `out.glb` in glTF binary format.
 
 ## Bulk converting
 
-It's also possible to bulk convert all the pony models
+It's also possible to bulk convert all the pony models. Note, this includes the animations.
 
 ```shell
 cargo run --release --bin bulk-convert extracted/files/ output/glb/files
