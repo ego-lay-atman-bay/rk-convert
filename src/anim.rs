@@ -35,22 +35,34 @@ impl<T: Read + Seek> AnimFile<T> {
     }
 
     pub fn read_bone_pose(&mut self, frame_type: u32) -> io::Result<BonePose> {
-        assert_eq!(frame_type, 4, "only frame_type = 4 is supported");
-        let (x, y, z): (i16, i16, i16) = self.file.read_one()?;
-        let (a, b, c, d): (i16, i8, i8, i8) = self.file.read_one()?;
-        Ok(BonePose {
-            pos: [
-                x as f32 / 32.,
-                y as f32 / 32.,
-                z as f32 / 32.,
-            ],
-            quat: [
-                a as f32 / 32767.,
-                b as f32 / 127.,
-                c as f32 / 127.,
-                d as f32 / 127.,
-            ],
-        })
+        match frame_type {
+            4 => {
+                let (x, y, z): (i16, i16, i16) = self.file.read_one()?;
+                let (a, b, c, d): (i16, i8, i8, i8) = self.file.read_one()?;
+                Ok(BonePose {
+                    pos: [
+                        x as f32 / 32.,
+                        y as f32 / 32.,
+                        z as f32 / 32.,
+                    ],
+                    quat: [
+                        a as f32 / 32767.,
+                        b as f32 / 127.,
+                        c as f32 / 127.,
+                        d as f32 / 127.,
+                    ],
+                })
+            }
+            0 => {
+                let (qx, qy, qz, qw): (f32, f32, f32, f32) = self.file.read_one()?;
+                let (px, py, pz, _pad): (f32, f32, f32, f32) = self.file.read_one()?;
+                Ok(BonePose {
+                    pos: [px, py, pz],
+                    quat: [qw, qx, qy, qz],
+                })
+            }
+            _ => panic!("unknown frame type {}", frame_type),
+        }
     }
 
     pub fn read_frame(&mut self, header: &FileHeader) -> io::Result<Frame> {
